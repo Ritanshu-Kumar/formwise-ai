@@ -1,11 +1,27 @@
 "use client";
 
-import { useState } from "react";
-import { demoForm } from "@/lib/forms";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { FormField } from "@/types/form";
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+type FormData = {
+  id: string;
+  title: string;
+  description: string;
+  fields: FormField[];
+  published: boolean;
+};
+
 export default function PublicFormPage() {
-  const form = demoForm;
+  const params = useParams();
+  const formId = params.formId as string;
+
+  const [form, setForm] = useState<FormData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const [answers, setAnswers] = useState<
     Record<string, string | boolean>
@@ -13,6 +29,45 @@ export default function PublicFormPage() {
 
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Load the form from the FastAPI backend
+  useEffect(() => {
+    const loadForm = async () => {
+      try {
+        setLoading(true);
+        setLoadError("");
+
+        const response = await fetch(
+          `${API_BASE_URL}/api/forms/${formId}`
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.detail || "Failed to load form."
+          );
+        }
+
+        setForm(data);
+      } catch (error) {
+        console.error("Form loading error:", error);
+
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load this form."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (formId) {
+      loadForm();
+    }
+  }, [formId]);
 
   const updateAnswer = (
     fieldId: number,
@@ -24,9 +79,14 @@ export default function PublicFormPage() {
     }));
   };
 
-  const submitForm = () => {
+  const submitForm = async () => {
+    if (!form) {
+      return;
+    }
+
     setError("");
 
+    // Validate required fields
     for (const field of form.fields) {
       if (!field.required) {
         continue;
@@ -39,27 +99,95 @@ export default function PublicFormPage() {
         answer === "" ||
         answer === false
       ) {
-        setError(
-          `Please complete "${field.label}".`
-        );
+        setError(`Please complete "${field.label}".`);
         return;
       }
     }
 
-    console.log("Form submission:", {
-      formId: form.id,
-      submittedAt: new Date().toISOString(),
-      answers,
-    });
+    setSubmitting(true);
 
-    setSubmitted(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/forms/${formId}/responses`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            answers,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Failed to submit response."
+        );
+      }
+
+      console.log(
+        "Response stored successfully:",
+        data
+      );
+
+      setSubmitted(true);
+    } catch (error) {
+      console.error("Submission error:", error);
+
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while submitting your response."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+        <div className="text-center">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
+
+          <p className="mt-4 text-sm text-slate-500">
+            Loading form...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  // Error loading form
+  if (!form) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+        <div className="w-full max-w-xl rounded-2xl bg-white p-10 text-center shadow-lg">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-2xl">
+            !
+          </div>
+
+          <h1 className="mt-6 text-2xl font-bold text-slate-900">
+            Form unavailable
+          </h1>
+
+          <p className="mt-3 text-slate-500">
+            {loadError || "This form could not be loaded."}
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  // Submission success
   if (submitted) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
         <div className="w-full max-w-xl rounded-2xl bg-white p-10 text-center shadow-lg">
-
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-2xl">
             ✓
           </div>
@@ -76,12 +204,12 @@ export default function PublicFormPage() {
             onClick={() => {
               setAnswers({});
               setSubmitted(false);
+              setError("");
             }}
-            className="mt-7 rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white"
+            className="mt-7 rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
             Submit another response
           </button>
-
         </div>
       </main>
     );
@@ -89,13 +217,11 @@ export default function PublicFormPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 px-5 py-12">
-
       <div className="mx-auto max-w-3xl">
 
         {/* Header */}
 
         <div className="mb-8">
-
           <p className="text-sm font-semibold text-slate-400">
             FormWise AI
           </p>
@@ -107,13 +233,11 @@ export default function PublicFormPage() {
           <p className="mt-3 text-lg leading-8 text-slate-500">
             {form.description}
           </p>
-
         </div>
 
         {/* Form */}
 
         <div className="rounded-2xl bg-white p-7 shadow-sm md:p-10">
-
           <div className="space-y-8">
 
             {form.fields.map((field) => (
@@ -137,11 +261,13 @@ export default function PublicFormPage() {
 
           <button
             onClick={submitForm}
-            className="mt-9 w-full rounded-lg bg-slate-900 px-6 py-4 font-semibold text-white transition hover:bg-slate-800"
+            disabled={submitting}
+            className="mt-9 w-full rounded-lg bg-slate-900 px-6 py-4 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Submit Response
+            {submitting
+              ? "Submitting..."
+              : "Submit Response"}
           </button>
-
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-400">
@@ -149,7 +275,6 @@ export default function PublicFormPage() {
         </p>
 
       </div>
-
     </main>
   );
 }
@@ -165,9 +290,7 @@ function PublicField({
 }) {
   return (
     <div>
-
       <label className="mb-3 block font-medium text-slate-700">
-
         {field.label}
 
         {field.required && (
@@ -175,7 +298,6 @@ function PublicField({
             *
           </span>
         )}
-
       </label>
 
       {field.type === "text" && (
@@ -239,7 +361,6 @@ function PublicField({
 
       {field.type === "checkbox" && (
         <label className="flex items-center gap-3">
-
           <input
             type="checkbox"
             checked={Boolean(value)}
@@ -252,10 +373,8 @@ function PublicField({
           <span className="text-slate-600">
             {field.options[0] || "I agree"}
           </span>
-
         </label>
       )}
-
     </div>
   );
 }
