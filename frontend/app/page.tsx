@@ -125,6 +125,8 @@ export default function Home() {
   const [publishError, setPublishError] = useState("");
   const [publishedFormId, setPublishedFormId] =
     useState<string | null>(null);
+  const [formId, setFormId] =
+  useState<string | null>(null);
 
   const selectedField = fields.find(
     (field) => field.id === selectedFieldId
@@ -301,26 +303,33 @@ export default function Home() {
   /* ---------------- PUBLISH TO BACKEND ---------------- */
 
   const publishForm = async () => {
-    setPublishError("");
+  setPublishError("");
 
-    if (!formTitle.trim()) {
-      setPublishError(
-        "Please enter a title for your form."
-      );
-      return;
-    }
+  if (!formTitle.trim()) {
+    setPublishError(
+      "Please enter a title for your form."
+    );
+    return;
+  }
 
-    if (fields.length === 0) {
-      setPublishError(
-        "Add at least one field before publishing."
-      );
-      return;
-    }
+  if (fields.length === 0) {
+    setPublishError(
+      "Add at least one field before publishing."
+    );
+    return;
+  }
 
-    setPublishing(true);
+  setPublishing(true);
 
-    try {
-      const response = await fetch(
+  try {
+    let currentFormId = formId;
+
+    /*
+     * STEP 1
+     * Create the form if it doesn't exist yet.
+     */
+    if (!currentFormId) {
+      const createResponse = await fetch(
         `${API_BASE_URL}/api/forms`,
         {
           method: "POST",
@@ -335,55 +344,100 @@ export default function Home() {
         }
       );
 
-      const data = await response.json();
+      const createData =
+        await createResponse.json();
 
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Failed to create form."
-        );
+      if (!createResponse.ok) {
+        const detail =
+          typeof createData.detail === "string"
+            ? createData.detail
+            : "Failed to create form.";
+
+        throw new Error(detail);
       }
 
-      const createdForm =
-        data as PublishResponse;
+      currentFormId = createData.id;
 
-      // The backend creates the form first.
-      // Now publish that specific form.
-      const publishResponse = await fetch(
-        `${API_BASE_URL}/api/forms/${createdForm.id}/publish`,
-        {
-          method: "POST",
-        }
-      );
-
-      const publishedData =
-        await publishResponse.json();
-
-      if (!publishResponse.ok) {
-        throw new Error(
-          publishedData.detail ||
-            "Form was created but could not be published."
-        );
-      }
-
-      setPublishedFormId(createdForm.id);
-      setPublished(true);
-
-      console.log(
-        "Form published successfully:",
-        publishedData
-      );
-    } catch (error) {
-      console.error("Publish error:", error);
-
-      setPublishError(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong while publishing."
-      );
-    } finally {
-      setPublishing(false);
+      setFormId(currentFormId);
     }
-  };
+
+    /*
+     * STEP 2
+     * Update the existing form with the
+     * latest builder state.
+     */
+    const updateResponse = await fetch(
+      `${API_BASE_URL}/api/forms/${currentFormId}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: formTitle.trim(),
+          description: formDescription.trim(),
+          fields,
+        }),
+      }
+    );
+
+    const updateData =
+      await updateResponse.json();
+
+    if (!updateResponse.ok) {
+      const detail =
+        typeof updateData.detail === "string"
+          ? updateData.detail
+          : "Failed to save form changes.";
+
+      throw new Error(detail);
+    }
+
+    /*
+     * STEP 3
+     * Publish the same form.
+     */
+    const publishResponse = await fetch(
+      `${API_BASE_URL}/api/forms/${currentFormId}/publish`,
+      {
+        method: "POST",
+      }
+    );
+
+    const publishedData =
+      await publishResponse.json();
+
+    if (!publishResponse.ok) {
+      const detail =
+        typeof publishedData.detail === "string"
+          ? publishedData.detail
+          : "Form could not be published.";
+
+      throw new Error(detail);
+    }
+
+    setPublishedFormId(currentFormId);
+    setPublished(true);
+
+    console.log(
+      "Form saved and published:",
+      publishedData
+    );
+  } catch (error) {
+    console.error(
+      "Publish error:",
+      error
+    );
+
+    setPublishError(
+      error instanceof Error
+        ? error.message
+        : "Something went wrong while publishing."
+    );
+  } finally {
+    setPublishing(false);
+  }
+};
 
   /* ---------------- OPEN PUBLIC FORM ---------------- */
 
