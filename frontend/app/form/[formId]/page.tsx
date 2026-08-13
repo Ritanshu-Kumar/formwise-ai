@@ -45,9 +45,16 @@ export default function PublicFormPage() {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(
-            data.detail || "Failed to load form."
-          );
+          const detail =
+            typeof data.detail === "string"
+              ? data.detail
+              : Array.isArray(data.detail)
+                ? data.detail
+                    .map((item: { msg?: string }) => item.msg || "Invalid request")
+                    .join(", ")
+                : "Failed to load form.";
+
+          throw new Error(detail);
         }
 
         setForm(data);

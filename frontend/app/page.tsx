@@ -21,6 +21,17 @@ type FormResponse = {
   [fieldId: number]: string | boolean;
 };
 
+type PublishResponse = {
+  id: string;
+  title: string;
+  description: string;
+  fields: FormField[];
+  published: boolean;
+};
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
 const fieldDefinitions: {
   type: FieldType;
   label: string;
@@ -41,7 +52,7 @@ const createField = (
   );
 
   return {
-    id: Date.now() + Math.random(),
+    id: Date.now() + Math.floor(Math.random() * 1000),
     type,
     label: `${definition?.label ?? "Field"} ${index + 1}`,
     required: false,
@@ -53,7 +64,10 @@ const createField = (
 };
 
 export default function Home() {
-  const [formTitle, setFormTitle] = useState("Customer Feedback");
+  const [formTitle, setFormTitle] = useState(
+    "Customer Feedback"
+  );
+
   const [formDescription, setFormDescription] = useState(
     "We would love to hear your feedback."
   );
@@ -89,11 +103,12 @@ export default function Home() {
     },
   ]);
 
-  const [selectedFieldId, setSelectedFieldId] = useState<number | null>(
-    1
-  );
+  const [selectedFieldId, setSelectedFieldId] =
+    useState<number | null>(1);
 
-  const [responses, setResponses] = useState<FormResponse[]>([]);
+  const [responses, setResponses] = useState<FormResponse[]>(
+    []
+  );
 
   const [currentResponse, setCurrentResponse] =
     useState<FormResponse>({});
@@ -104,6 +119,12 @@ export default function Home() {
 
   const [draggedType, setDraggedType] =
     useState<FieldType | null>(null);
+
+  // New backend state
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState("");
+  const [publishedFormId, setPublishedFormId] =
+    useState<string | null>(null);
 
   const selectedField = fields.find(
     (field) => field.id === selectedFieldId
@@ -237,7 +258,7 @@ export default function Home() {
     });
   };
 
-  /* ---------------- RESPONSES ---------------- */
+  /* ---------------- LOCAL PREVIEW RESPONSE ---------------- */
 
   const updateResponse = (
     fieldId: number,
@@ -277,10 +298,120 @@ export default function Home() {
     setDraggedType(null);
   };
 
-  /* ---------------- PUBLISH ---------------- */
+  /* ---------------- PUBLISH TO BACKEND ---------------- */
 
-  const publishForm = () => {
-    setPublished(true);
+  const publishForm = async () => {
+    setPublishError("");
+
+    if (!formTitle.trim()) {
+      setPublishError(
+        "Please enter a title for your form."
+      );
+      return;
+    }
+
+    if (fields.length === 0) {
+      setPublishError(
+        "Add at least one field before publishing."
+      );
+      return;
+    }
+
+    setPublishing(true);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/forms`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: formTitle.trim(),
+            description: formDescription.trim(),
+            fields,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Failed to create form."
+        );
+      }
+
+      const createdForm =
+        data as PublishResponse;
+
+      // The backend creates the form first.
+      // Now publish that specific form.
+      const publishResponse = await fetch(
+        `${API_BASE_URL}/api/forms/${createdForm.id}/publish`,
+        {
+          method: "POST",
+        }
+      );
+
+      const publishedData =
+        await publishResponse.json();
+
+      if (!publishResponse.ok) {
+        throw new Error(
+          publishedData.detail ||
+            "Form was created but could not be published."
+        );
+      }
+
+      setPublishedFormId(createdForm.id);
+      setPublished(true);
+
+      console.log(
+        "Form published successfully:",
+        publishedData
+      );
+    } catch (error) {
+      console.error("Publish error:", error);
+
+      setPublishError(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while publishing."
+      );
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  /* ---------------- OPEN PUBLIC FORM ---------------- */
+
+  const openPublicForm = () => {
+    if (!publishedFormId) return;
+
+    window.open(
+      `/form/${publishedFormId}`,
+      "_blank"
+    );
+  };
+
+  /* ---------------- COPY PUBLIC LINK ---------------- */
+
+  const copyPublicLink = async () => {
+    if (!publishedFormId) return;
+
+    const url = `${window.location.origin}/form/${publishedFormId}`;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      alert("Public form link copied!");
+    } catch (error) {
+      console.error(
+        "Failed to copy public link:",
+        error
+      );
+    }
   };
 
   /* ---------------- FIELD RENDERER ---------------- */
@@ -349,16 +480,20 @@ export default function Home() {
             }
             className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-700 outline-none"
           >
-            <option value="">Select...</option>
+            <option value="">
+              Select...
+            </option>
 
-            {field.options.map((option, index) => (
-              <option
-                key={`${field.id}-${index}`}
-                value={option}
-              >
-                {option}
-              </option>
-            ))}
+            {field.options.map(
+              (option, index) => (
+                <option
+                  key={`${field.id}-${index}`}
+                  value={option}
+                >
+                  {option}
+                </option>
+              )
+            )}
           </select>
         );
 
@@ -382,6 +517,9 @@ export default function Home() {
             </span>
           </label>
         );
+
+      default:
+        return null;
     }
   };
 
@@ -392,26 +530,37 @@ export default function Home() {
 
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-[1500px] items-center justify-between px-6 py-5">
+
           <h1 className="text-2xl font-bold tracking-tight">
-            FormWise <span className="text-slate-500">AI</span>
+            FormWise{" "}
+            <span className="text-slate-500">
+              AI
+            </span>
           </h1>
 
           <div className="flex items-center gap-3">
 
             <span className="hidden text-sm text-slate-400 md:block">
               {responses.length} response
-              {responses.length !== 1 ? "s" : ""}
+              {responses.length !== 1
+                ? "s"
+                : ""}
             </span>
 
             <button
               onClick={publishForm}
+              disabled={publishing || published}
               className={`rounded-lg px-5 py-3 text-sm font-semibold text-white transition ${
                 published
                   ? "bg-emerald-600"
                   : "bg-[#101426] hover:bg-[#1b2338]"
-              }`}
+              } disabled:cursor-not-allowed disabled:opacity-70`}
             >
-              {published ? "Published ✓" : "Publish Form"}
+              {publishing
+                ? "Publishing..."
+                : published
+                  ? "Published ✓"
+                  : "Publish Form"}
             </button>
 
           </div>
@@ -459,27 +608,31 @@ export default function Home() {
 
             <div className="space-y-3">
 
-              {fieldDefinitions.map((field) => (
-                <button
-                  key={field.type}
-                  draggable
-                  onDragStart={() =>
-                    handleDragStart(field.type)
-                  }
-                  onClick={() =>
-                    addField(field.type)
-                  }
-                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                >
-                  <span className="font-medium">
-                    {field.label}
-                  </span>
+              {fieldDefinitions.map(
+                (field) => (
+                  <button
+                    key={field.type}
+                    draggable
+                    onDragStart={() =>
+                      handleDragStart(
+                        field.type
+                      )
+                    }
+                    onClick={() =>
+                      addField(field.type)
+                    }
+                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <span className="font-medium">
+                      {field.label}
+                    </span>
 
-                  <span className="text-2xl text-slate-400">
-                    ›
-                  </span>
-                </button>
-              ))}
+                    <span className="text-2xl text-slate-400">
+                      ›
+                    </span>
+                  </button>
+                )
+              )}
 
             </div>
 
@@ -533,79 +686,91 @@ export default function Home() {
 
               <div className="mt-9 space-y-7">
 
-                {fields.map((field, index) => (
+                {fields.map(
+                  (field, index) => (
+                    <div
+                      key={field.id}
+                      onClick={() =>
+                        setSelectedFieldId(
+                          field.id
+                        )
+                      }
+                      className={`group relative rounded-lg p-3 transition ${
+                        selectedFieldId ===
+                        field.id
+                          ? "bg-slate-50 ring-1 ring-slate-200"
+                          : "hover:bg-slate-50"
+                      }`}
+                    >
 
-                  <div
-                    key={field.id}
-                    onClick={() =>
-                      setSelectedFieldId(field.id)
-                    }
-                    className={`group relative rounded-lg p-3 transition ${
-                      selectedFieldId === field.id
-                        ? "bg-slate-50 ring-1 ring-slate-200"
-                        : "hover:bg-slate-50"
-                    }`}
-                  >
+                      <div className="mb-3 flex items-center justify-between">
 
-                    <div className="mb-3 flex items-center justify-between">
+                        <label className="font-medium text-slate-600">
 
-                      <label className="font-medium text-slate-600">
+                          {field.label}
 
-                        {field.label}
+                          {field.required && (
+                            <span className="ml-1 text-red-500">
+                              *
+                            </span>
+                          )}
 
-                        {field.required && (
-                          <span className="ml-1 text-red-500">
-                            *
-                          </span>
-                        )}
+                        </label>
 
-                      </label>
+                        <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
 
-                      <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              moveField(
+                                field.id,
+                                "up"
+                              );
+                            }}
+                            disabled={index === 0}
+                            className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-200 disabled:opacity-20"
+                          >
+                            ↑
+                          </button>
 
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            moveField(field.id, "up");
-                          }}
-                          disabled={index === 0}
-                          className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-200 disabled:opacity-20"
-                        >
-                          ↑
-                        </button>
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              moveField(
+                                field.id,
+                                "down"
+                              );
+                            }}
+                            disabled={
+                              index ===
+                              fields.length - 1
+                            }
+                            className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-200 disabled:opacity-20"
+                          >
+                            ↓
+                          </button>
 
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            moveField(field.id, "down");
-                          }}
-                          disabled={
-                            index === fields.length - 1
-                          }
-                          className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-200 disabled:opacity-20"
-                        >
-                          ↓
-                        </button>
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              removeField(
+                                field.id
+                              );
+                            }}
+                            className="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
 
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            removeField(field.id);
-                          }}
-                          className="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-50"
-                        >
-                          Delete
-                        </button>
+                        </div>
 
                       </div>
 
+                      {renderFieldInput(field)}
+
                     </div>
-
-                    {renderFieldInput(field)}
-
-                  </div>
-
-                ))}
+                  )
+                )}
 
               </div>
 
@@ -623,11 +788,9 @@ export default function Home() {
             </div>
 
             {submitted && (
-
               <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-700">
                 Response submitted successfully.
               </div>
-
             )}
 
           </section>
@@ -672,7 +835,8 @@ export default function Home() {
                       updateField(
                         selectedField.id,
                         {
-                          label: event.target.value,
+                          label:
+                            event.target.value,
                         }
                       )
                     }
@@ -690,11 +854,13 @@ export default function Home() {
                   </label>
 
                   <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                    {fieldDefinitions.find(
-                      (field) =>
-                        field.type ===
-                        selectedField.type
-                    )?.label}
+                    {
+                      fieldDefinitions.find(
+                        (field) =>
+                          field.type ===
+                          selectedField.type
+                      )?.label
+                    }
                   </div>
 
                 </div>
@@ -804,7 +970,6 @@ export default function Home() {
                     </div>
 
                   </div>
-
                 )}
 
                 {/* DELETE */}
@@ -829,6 +994,61 @@ export default function Home() {
         </div>
 
       </section>
+
+      {/* ================= PUBLISH RESULT ================= */}
+
+      {(publishError || published) && (
+        <section className="px-6 pb-10">
+          <div className="mx-auto max-w-[1500px]">
+
+            {publishError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-600">
+                {publishError}
+              </div>
+            )}
+
+            {published &&
+              publishedFormId && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-6">
+
+                  <p className="font-semibold text-emerald-800">
+                    Your form is live!
+                  </p>
+
+                  <p className="mt-2 text-sm text-emerald-700">
+                    Share this public form with respondents:
+                  </p>
+
+                  <div className="mt-4 flex flex-col gap-3 md:flex-row">
+
+                    <input
+                      readOnly
+                      value={`${typeof window !== "undefined" ? window.location.origin : ""}/form/${publishedFormId}`}
+                      className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none"
+                    />
+
+                    <button
+                      onClick={copyPublicLink}
+                      className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                    >
+                      Copy Link
+                    </button>
+
+                    <button
+                      onClick={openPublicForm}
+                      className="rounded-lg bg-[#101426] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1b2338]"
+                    >
+                      Open Form
+                    </button>
+
+                  </div>
+
+                </div>
+              )}
+
+          </div>
+        </section>
+      )}
 
       {/* ================= AI SECTION ================= */}
 
