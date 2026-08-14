@@ -177,3 +177,24 @@ def get_responses(
         }
         for response in responses
     ]
+
+@router.delete(
+    "/{form_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_form(
+    form_id: UUID,
+    db: Session = Depends(get_db),
+):
+    form = db.get(Form, form_id)
+
+    if form is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Form not found",
+        )
+
+    db.delete(form)
+    db.commit()
+
+    return None
