@@ -1,4 +1,4 @@
-import { FormDefinition } from "@/types/form";
+import { FormDefinition } from "@/types/forms";
 
 export const demoForm: FormDefinition = {
   id: "customer-feedback",
