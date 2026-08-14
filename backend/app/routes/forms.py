@@ -39,6 +39,33 @@ def create_form(
 
     return form
 
+@router.get(
+    "",
+    response_model=list[FormOut],
+)
+def list_forms(
+    db: Session = Depends(get_db),
+):
+    forms = (
+        db.query(Form)
+        .order_by(Form.created_at.desc())
+        .all()
+    )
+
+    return forms
+
+@router.get(
+    "",
+    response_model=list[FormOut],
+)
+def list_forms(
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(Form)
+        .order_by(Form.created_at.desc())
+        .all()
+    )
 
 @router.get(
     "/{form_id}",
@@ -116,3 +143,37 @@ def publish_form(
     db.refresh(form)
 
     return form
+
+@router.get(
+    "/{form_id}/responses",
+)
+def get_responses(
+    form_id: UUID,
+    db: Session = Depends(get_db),
+):
+    form = db.get(Form, form_id)
+
+    if form is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Form not found",
+        )
+
+    from ..models import Response
+
+    responses = (
+        db.query(Response)
+        .filter(Response.form_id == form_id)
+        .order_by(Response.submitted_at.desc())
+        .all()
+    )
+
+    return [
+        {
+            "id": str(response.id),
+            "form_id": str(response.form_id),
+            "answers": response.answers,
+            "submitted_at": response.submitted_at,
+        }
+        for response in responses
+    ]
