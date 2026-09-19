@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 
 type FieldType =
   | "text"
@@ -20,14 +19,6 @@ type FormField = {
 
 type FormResponse = {
   [fieldId: number]: string | boolean;
-};
-
-type FormData = {
-  id: string;
-  title: string;
-  description: string;
-  fields: FormField[];
-  published: boolean;
 };
 
 const API_BASE_URL =
@@ -143,15 +134,7 @@ export default function NewFormPage() {
 
   const [formId, setFormId] =
     useState<string | null>(null);
-
-  // Existing form loading state
-  const [loadingForm, setLoadingForm] =
-    useState(false);
-
-  const [loadError, setLoadError] =
-    useState("");
-
-  /*
+/*
    * --------------------------------------------------
    * LOAD EXISTING FORM
    * --------------------------------------------------
@@ -731,58 +714,6 @@ export default function NewFormPage() {
         return null;
     }
   };
-
-  /*
-   * --------------------------------------------------
-   * LOADING EXISTING FORM
-   * --------------------------------------------------
-   */
-
-  if (loadingForm) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-center">
-
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
-
-          <p className="mt-4 text-sm text-slate-500">
-            Loading form...
-          </p>
-
-        </div>
-      </main>
-    );
-  }
-
-  /*
-   * --------------------------------------------------
-   * LOAD ERROR
-   * --------------------------------------------------
-   */
-
-  if (loadError) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
-
-        <div className="w-full max-w-xl rounded-2xl bg-white p-10 text-center shadow-lg">
-
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-2xl">
-            !
-          </div>
-
-          <h1 className="mt-6 text-2xl font-bold">
-            Unable to load form
-          </h1>
-
-          <p className="mt-3 text-slate-500">
-            {loadError}
-          </p>
-
-        </div>
-
-      </main>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-[#f8fafc] text-[#111827]">

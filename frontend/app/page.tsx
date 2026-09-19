@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const API_BASE_URL =
@@ -27,28 +27,31 @@ export default function HomePage() {
   const [deletingId, setDeletingId] =
     useState<string | null>(null);
 
+  const fetchForms = useCallback(async () => {
+    const response = await fetch(
+      `${API_BASE_URL}/api/forms`
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        typeof data.detail === "string"
+          ? data.detail
+          : "Failed to load forms."
+      );
+    }
+
+    return Array.isArray(data) ? data : [];
+  }, []);
+
   const loadForms = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/forms`
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Failed to load forms."
-        );
-      }
-
-      setForms(
-        Array.isArray(data) ? data : []
-      );
+      const data = await fetchForms();
+      setForms(data);
     } catch (error) {
       console.error(
         "Failed to load forms:",
@@ -66,8 +69,45 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    loadForms();
-  }, []);
+    let cancelled = false;
+
+    const loadInitialForms = async () => {
+      try {
+        const data = await fetchForms();
+
+        if (cancelled) {
+          return;
+        }
+
+        setForms(data);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(
+          "Failed to load forms:",
+          error
+        );
+
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load forms."
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadInitialForms();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchForms]);
 
   const deleteForm = async (
     form: FormData

@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const API_BASE_URL =
@@ -17,7 +17,7 @@ type FormData = {
 
 export default function EditFormPage() {
   const params = useParams();
-  const formId = params.formId as string;
+    const router = useRouter();const formId = params.formId as string;
 
   const [form, setForm] =
     useState<FormData | null>(null);
@@ -72,6 +72,13 @@ export default function EditFormPage() {
     loadForm();
   }, [formId]);
 
+  useEffect(() => {
+    if (form?.id) {
+      router.replace(
+        `/forms/new?formId=${form.id}`
+      );
+    }
+  }, [form, router]);
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -120,8 +127,5 @@ export default function EditFormPage() {
    * rewriting the existing builder.
    */
 
-  window.location.href =
-    `/forms/new?formId=${form.id}`;
-
-  return null;
+return null;
 }

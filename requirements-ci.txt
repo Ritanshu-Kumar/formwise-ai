@@ -1,0 +1,2 @@
+# Contract tests use only the Python standard library.
+# Kept as a separate file so CI does not need backend or frontend dependencies.

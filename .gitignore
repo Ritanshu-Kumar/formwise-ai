@@ -6,35 +6,35 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
 .venv/
 venv/
+env/
 
 # Node
 node_modules/
 .next/
 out/
 
-# IDE
+# IDE / OS
 .vscode/
 .idea/
-
-# OS
 .DS_Store
 Thumbs.db
 
 # Logs
 *.log
-
-# Docker
 *.pid
 
-# Database
+# Local database
 postgres-data/
 
-# Testing
+# Testing / coverage
 .pytest_cache/
 .coverage
+.mypy_cache/
+.ruff_cache/
 
-# Secrets
+# Secrets / certificates
 *.pem
 *.key
